@@ -89,6 +89,7 @@ module.exports = function(RED) {
     // node specific initialization code
     node.initialize = function () {
       function Consume(msg) {
+        delete msg._channel;
         node.send({
           topic: node.topic || msg.fields.routingKey,
           payload: msg.getContent(),
