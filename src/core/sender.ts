@@ -32,7 +32,7 @@ export class Sender {
     public async send(
         topic: string,
         payload: any,
-        options?: any,
+        options?: amqp.Options.Publish,
     ): Promise<boolean> {
         const ch = await this.__handler.resource();
 

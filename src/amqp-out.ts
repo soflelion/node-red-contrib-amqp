@@ -34,9 +34,9 @@ module.exports = function register(RED: Red): void {
             this.error(err.toString(), { error: err }),
         );
 
-        this.on('input', async (msg: any & NodeMessage) => {
+        this.on('input', async (msg: NodeMessage) => {
             try {
-                await sender.send(props.routingkey || msg.topic, msg.payload);
+                await sender.send(props.routingkey || msg.topic, msg.payload, msg.options);
             } catch (e) {
                 msg.error = e;
 
