@@ -3,7 +3,6 @@
     "version": "2.0.0",
     "description": "Node-RED AMQP input and output nodes",
     "homepage": "https://github.com/node-red-tools/node-red-contrib-amqp#readme",
-    "main": "lib/amqp.js",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
         "build": "npm run clean && npm run build:ts && npm run build:html && npm run build:assets",
