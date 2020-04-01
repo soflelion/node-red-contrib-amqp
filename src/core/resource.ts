@@ -22,32 +22,36 @@ export interface Resource extends events.EventEmitter {
 
 export type ResourceFactory<T extends Resource> = () => Promise<T>;
 
-export interface ResourceHandlerOptions {
+export type ResourceCloser<T extends Resource> = (res: T) => Promise<void>;
+
+export interface ResourceHandlerOptions<T extends Resource> {
     name: string;
+    closer?: ResourceCloser<T>;
     retry?: ResourceRetry;
     eventBindings?: string[];
 }
 
 export class ResourceHandler<T extends Resource> extends events.EventEmitter {
-    private __resource: Promise<T>;
+    private __resource: Promise<T | null>;
     private __factory: ResourceFactory<T>;
     private __err?: Error;
     private __status: ResourceStatus;
-    private __opts: ResourceHandlerOptions;
+    private __opts: ResourceHandlerOptions<T>;
 
-    constructor(factory: ResourceFactory<T>, opts?: ResourceHandlerOptions) {
+    constructor(factory: ResourceFactory<T>, opts?: ResourceHandlerOptions<T>) {
         super();
 
         this.__opts = {
             name: opts?.name || 'Resource',
+            closer: opts?.closer,
             eventBindings: opts?.eventBindings,
             retry: {
                 retries: opts?.retry?.retries || 10,
-                minTimeout: opts?.retry?.minTimeout || 1000,
+                minTimeout: opts?.retry?.minTimeout || 5000,
                 maxTimeout: opts?.retry?.maxTimeout || Infinity,
                 factor: opts?.retry?.factor || 2,
-                randomize: opts?.retry?.randomize || false
-            }
+                randomize: opts?.retry?.randomize || false,
+            },
         };
         this.__factory = factory;
         this.__status = ResourceStatus.Connecting;
@@ -59,12 +63,18 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
         return this.__status;
     }
 
-    public get resource(): Promise<T> {
-        return this.__resource;
-    }
-
     public get error(): Error | undefined {
         return this.__err;
+    }
+
+    public async resource(): Promise<T> {
+        const res = await this.__resource;
+
+        if (!res) {
+            return Promise.reject(new Error(`${this.__opts} is not available`));
+        }
+
+        return res;
     }
 
     public async connect(): Promise<void> {
@@ -87,13 +97,22 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
         this.__setStatus(ResourceStatus.Closed);
 
         const res = await this.__resource;
+
+        if (res == null) {
+            return Promise.resolve();
+        }
+
         res.removeAllListeners();
+
+        if (this.__opts.closer) {
+            return this.__opts.closer(res);
+        }
 
         return res.close();
     }
 
     private __subscribe(res: T): void {
-        res.once('error', err => {
+        res.once('error', (err) => {
             res.removeAllListeners();
             this.__err = err;
             this.__setStatus(ResourceStatus.Error);
@@ -108,7 +127,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
         });
 
         if (Array.isArray(this.__opts.eventBindings)) {
-            this.__opts.eventBindings.forEach(i => {
+            this.__opts.eventBindings.forEach((i) => {
                 res.on(i, (...args) => {
                     this.emit(i, ...args);
                 });
@@ -130,19 +149,25 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
         this.__setStatus(ResourceStatus.Connecting);
         this.__err = undefined;
-        this.__resource = retry(() => {
-            if (this.__status === ResourceStatus.Closing) {
-                this.__setToClose();
+        this.__resource = retry(
+            () => {
+                if (this.__status === ResourceStatus.Closing) {
+                    this.__setToClose();
 
-                throw new retry.AbortError(`Connection is aborted`);
-            }
+                    throw new retry.AbortError(`Connection is aborted`);
+                }
 
-            return this.__factory();
-        }, Object.assign({
-            onFailedAttempt: (err: FailedAttemptError) => {
-                this.emit("retry", err);
-            }
-        }, this.__opts.retry))
+                return this.__factory();
+            },
+            Object.assign(
+                {
+                    onFailedAttempt: (err: FailedAttemptError) => {
+                        this.emit('retry', err);
+                    },
+                },
+                this.__opts.retry,
+            ),
+        )
             .then((res: T) => {
                 if (this.__status === ResourceStatus.Closing) {
                     this.__setToClose();
@@ -159,13 +184,13 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
                 return res;
             })
-            .catch(err => {
+            .catch((err) => {
                 this.__err = err;
                 this.__setStatus(ResourceStatus.Error);
 
                 this.emit('error', err);
 
-                return Promise.reject(err);
+                return Promise.resolve(null);
             });
     }
 

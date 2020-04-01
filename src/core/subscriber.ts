@@ -10,22 +10,40 @@ export class Subscriber {
 
     constructor(conn: Connection, queue: string) {
         this.__queue = queue;
-        this.__handler = new ResourceHandler(async () => {
-            const ch = await conn.createChannel();
-            await ch.consume(
-                this.__queue,
-                (msg: amqp.ConsumeMessage | null) => {
-                    if (msg) {
-                        this.__handler.emit('message', msg);
-                    }
-                },
-                {
-                    noAck: true,
-                },
-            );
+        this.__handler = new ResourceHandler(
+            async () => {
+                const ch = await conn.createChannel();
 
-            return ch;
-        });
+                await ch.assertQueue(this.__queue);
+
+                await ch.consume(
+                    this.__queue,
+                    (msg: amqp.ConsumeMessage | null) => {
+                        if (msg) {
+                            this.__handler.emit('message', msg);
+                        }
+                    },
+                    {
+                        noAck: true,
+                    },
+                );
+
+                return ch;
+            },
+            {
+                name: 'Subscriber',
+                closer: async (ch: amqp.Channel) => {
+                    // if connection is not being closed
+                    // we can safely close the channel
+                    if (conn.status === ResourceStatus.Connected) {
+                        return ch.close();
+                    }
+
+                    // otherwise, we ignore expplicit closure
+                    return Promise.resolve();
+                },
+            },
+        );
     }
 
     public get queue(): string {
@@ -37,7 +55,7 @@ export class Subscriber {
     }
 
     public async ready(): Promise<void> {
-        await this.__handler.resource;
+        await this.__handler.resource();
     }
 
     public async close(): Promise<void> {

@@ -9,7 +9,19 @@ export class Sender {
     private __exchange: string;
 
     constructor(conn: Connection, exchange: string) {
-        this.__handler = new ResourceHandler(() => conn.createChannel());
+        this.__handler = new ResourceHandler(() => conn.createChannel(), {
+            name: 'Sender',
+            closer: async (ch: amqp.Channel) => {
+                // if connection is not being closed
+                // we can safely close the channel
+                if (conn.status === ResourceStatus.Connected) {
+                    return ch.close();
+                }
+
+                // otherwise, we ignore expplicit closure
+                return Promise.resolve();
+            },
+        });
         this.__exchange = exchange;
     }
 
@@ -22,7 +34,7 @@ export class Sender {
         payload: any,
         options?: any,
     ): Promise<boolean> {
-        const ch = await this.__handler.resource;
+        const ch = await this.__handler.resource();
 
         return ch.publish(
             this.__exchange,
@@ -37,7 +49,7 @@ export class Sender {
     }
 
     public async ready(): Promise<void> {
-        await this.__handler.resource;
+        await this.__handler.resource();
     }
 
     public async close(): Promise<void> {

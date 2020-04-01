@@ -1,5 +1,4 @@
 import * as amqp from 'amqplib';
-import url from 'url';
 import { ResourceEvent, ResourceHandler, ResourceStatus } from './resource';
 import { ConnectionSettings } from './settings';
 import { cert } from './tls';
@@ -9,8 +8,6 @@ export type ConnectionEvent = ResourceEvent | 'blocked' | 'unblocked';
 async function openInternal(
     settings: ConnectionSettings,
 ): Promise<amqp.Connection> {
-    const u = url.parse(`${settings.host}:${settings.port}`);
-
     const protocol = settings.useTLS ? 'amqps' : 'amqp';
     let socketOpts;
 
@@ -28,8 +25,8 @@ async function openInternal(
             vhost: settings.vhost,
             username: settings.username,
             password: settings.password,
-            hostname: u.hostname || 'localhost',
-            port: u.port ? parseFloat(u.port) : 5672,
+            hostname: settings.host || 'localhost',
+            port: settings.port ? settings.port : 5672,
             heartbeat: settings.keepAlive,
             frameMax: 0,
         },
@@ -57,13 +54,13 @@ export class Connection {
     }
 
     public async createChannel(): Promise<amqp.Channel> {
-        const conn = await this.__conn.resource;
+        const conn = await this.__conn.resource();
 
         return conn.createChannel();
     }
 
     public async ready(): Promise<void> {
-        await this.__conn.resource;
+        await this.__conn.resource();
     }
 
     public on(event: ConnectionEvent, handler: any): void {

@@ -8,7 +8,7 @@ export interface NodeMessage {
 export interface Properties extends NodeProperties {
     source: string;
     routingkey: string;
-    ioType: string;
-    ioName: string;
+    iotype: string;
+    ioname: string;
     server: string;
 }

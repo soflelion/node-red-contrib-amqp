@@ -1,10 +1,16 @@
 import { Node, NodeProperties, Red } from 'node-red';
-import { ConnectionSettings, ResourceRetryError, ResourceStatus, close, open } from './core';
+import {
+    ConnectionSettings,
+    ResourceRetryError,
+    ResourceStatus,
+    close,
+    open,
+} from './core';
 
 export interface ServerNode extends Node {
     settings: ConnectionSettings;
     credentials: {
-        username?: string;
+        user?: string;
         password?: string;
     };
 }
@@ -39,7 +45,7 @@ module.exports = function register(RED: Red): void {
                 useCA: props.useca,
                 useTLS: props.usetls,
                 useTopology: props.usetopology,
-                username: this.credentials.username || '',
+                username: this.credentials.user || '',
                 password: this.credentials.password || '',
             };
 
@@ -49,9 +55,12 @@ module.exports = function register(RED: Red): void {
                 this.log(`[AMQP] Connection status: ${status}`);
             });
 
-            conn.on("retry", (retry: ResourceRetryError) => {
-                this.log(`[AMQP] Attempt ${retry.attemptNumber} failed. There are ${retry.retriesLeft} retries left.`);
-            })
+            conn.on('retry', (retry: ResourceRetryError) => {
+                this.log(`[AMQP] Connection error: ${retry.message}`);
+                this.log(
+                    `[AMQP] Attempt ${retry.attemptNumber} failed. There are ${retry.retriesLeft} retries left.`,
+                );
+            });
 
             this.on('close', (done: Function) => {
                 close(this.settings).finally(() => done());

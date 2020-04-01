@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    (function() {
+    (function () {
         RED.nodes.registerType('amqp-server', {
             category: 'config',
             defaults: {
@@ -67,7 +67,7 @@
                     id: 'amqp-server-tab-topology',
                     label: 'Topology',
                 });
-                setTimeout(function() {
+                setTimeout(function () {
                     tabs.resize();
                 }, 0);
 
@@ -82,7 +82,7 @@
 
                 updateCAStatus();
 
-                $('#node-config-input-useca').on('click', function() {
+                $('#node-config-input-useca').on('click', function () {
                     updateCAStatus();
                 });
 
@@ -90,19 +90,15 @@
                     if ($('#node-config-input-usetls').is(':checked')) {
                         $('#node-config-input-useca').prop('disabled', false);
                         $('#node-config-input-ca').prop('disabled', false);
-                        $('#node-config-input-ca')
-                            .next()
-                            .css('color', '');
+                        $('#node-config-input-ca').next().css('color', '');
                     } else {
                         $('#node-config-input-useca').prop('disabled', true);
                         $('#node-config-input-ca').prop('disabled', true);
-                        $('#node-config-input-ca')
-                            .next()
-                            .css('color', '#aaa');
+                        $('#node-config-input-ca').next().css('color', '#aaa');
                     }
                 }
                 updateTLSOptions();
-                $('#node-config-input-usetls').on('click', function() {
+                $('#node-config-input-usetls').on('click', function () {
                     updateTLSOptions();
                 });
 
@@ -116,7 +112,7 @@
 
                 // update editor changes to topology field
                 const editor = this.editor;
-                this.editor.getSession().on('change', function() {
+                this.editor.getSession().on('change', function () {
                     topologyField.val(editor.getSession().getValue());
                 });
 
@@ -163,7 +159,7 @@
                     'dialogresize',
                     functionDialogResize,
                 );
-                $('#node-config-dialog').one('dialogopen', function() {
+                $('#node-config-dialog').one('dialogopen', function () {
                     const size = $('#node-config-dialog').dialog(
                         'option',
                         'sizeCache-function',
@@ -182,7 +178,7 @@
                         functionDialogResize();
                     }
                 });
-                $('#node-config-dialog').one('dialogclose', function() {
+                $('#node-config-dialog').one('dialogclose', function () {
                     $('#node-config-dialog').dialog('option', 'height');
                     $('#node-config-dialog').off(
                         'dialogresize',

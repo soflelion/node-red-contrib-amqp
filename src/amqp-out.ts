@@ -11,6 +11,8 @@ module.exports = function register(RED: Red): void {
         this: AmqpOutNode,
         props: Properties,
     ): void {
+        RED.nodes.createNode(this, props);
+
         setStatus(this, ResourceStatus.Connecting);
 
         const config = RED.nodes.getNode(props.server) as ServerNode;
@@ -22,7 +24,7 @@ module.exports = function register(RED: Red): void {
             return;
         }
 
-        const sender = new Sender(open(config.settings), props.ioName);
+        const sender = new Sender(open(config.settings), props.ioname);
         setStatus(this, ResourceStatus.Connected);
 
         sender.on('status', (status: ResourceStatus) =>
@@ -42,6 +44,12 @@ module.exports = function register(RED: Red): void {
             }
         });
 
-        this.on('close', () => sender.close());
+        this.on('close', async () => {
+            try {
+                await sender.close();
+            } catch (e) {
+                this.error(e.message, { error: e });
+            }
+        });
     });
 };
