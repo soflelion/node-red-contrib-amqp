@@ -68,7 +68,7 @@ module.exports = function register(RED: Red): void {
         },
         {
             credentials: {
-                username: { type: 'text' },
+                user: { type: 'text' },
                 password: { type: 'password' },
             },
         },
