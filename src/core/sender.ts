@@ -25,6 +25,17 @@ export class Sender {
         this.__exchange = exchange;
     }
 
+    // Add event listeners for connection issues
+    conn.on('close', () => {
+        console.log('AMQP connection closed. Attempting to reconnect...');
+        // Logic to handle reconnection
+    });
+
+    conn.on('error', (err) => {
+        console.error('AMQP connection error:', err);
+        // Handle the error
+    });
+
     public get exchange(): string {
         return this.__exchange;
     }
