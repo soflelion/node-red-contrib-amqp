@@ -41,6 +41,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
     private reconnectAttempts: number = 0;
     private readonly maxReconnectAttempts: number = 5;
     private readonly reconnectDelay: number = 5000;
+    private reconnectTimer: NodeJS.Timeout | null = null;
 
     constructor(factory: ResourceFactory<T>, opts?: ResourceHandlerOptions<T>) {
         super();
@@ -82,9 +83,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
     }
 
     public async connect(): Promise<void> {
-        this.__connect();
-
-        await this.__resource;
+        await this.__connect();
     }
 
     public async close(): Promise<void> {
@@ -94,25 +93,10 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
         if (this.__status === ResourceStatus.Connecting) {
             this.__setStatus(ResourceStatus.Closing);
-
             return Promise.resolve();
         }
 
-        this.__setStatus(ResourceStatus.Closed);
-
-        const res = await this.__resource;
-
-        if (res == null) {
-            return Promise.resolve();
-        }
-
-        res.removeAllListeners();
-
-        if (this.__opts.closer) {
-            return this.__opts.closer(res);
-        }
-
-        return res.close();
+        await this.__setToClose();
     }
 
     private __subscribe(res: T): void {
@@ -126,7 +110,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
         res.once('close', () => {
             res.removeAllListeners();
-            this.__setToClose();
+            this.__handleReconnect();
         });
 
         if (Array.isArray(this.__opts.eventBindings)) {
@@ -165,11 +149,10 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
         console.error(`[ResourceHandler] Max reconnection attempts reached for: ${this.__opts.name}`);
         this.isReconnecting = false;
-        // Démarrer les tentatives de reconnexion périodiques
         this.__startPeriodicReconnect();
     }
 
-    private __connect(force: boolean = false): void {
+    private __connect(force: boolean = false): Promise<void> {
         if (!force) {
             if (
                 this.__status === ResourceStatus.Connecting ||
@@ -177,7 +160,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
                 this.__status === ResourceStatus.Closing ||
                 this.__status === ResourceStatus.Closed
             ) {
-                return;
+                return Promise.resolve();
             }
         }
 
@@ -188,10 +171,8 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
             () => {
                 if (this.__status === ResourceStatus.Closing) {
                     this.__setToClose();
-
                     throw new retry.AbortError(`Connection is aborted`);
                 }
-
                 return this.__factory();
             },
             Object.assign(
@@ -206,83 +187,86 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
             .then((res: T) => {
                 if (this.__status === ResourceStatus.Closing) {
                     this.__setToClose();
-
-                    return Promise.reject(
-                        new Error(`${this.__opts.name} is closed`),
-                    );
+                    return Promise.reject(new Error(`${this.__opts.name} is closed`));
                 }
 
                 this.__subscribe(res);
                 this.__setStatus(ResourceStatus.Connected);
-
                 this.emit('open');
-
                 return res;
             })
             .catch((err) => {
                 this.__err = err;
                 this.__setStatus(ResourceStatus.Error);
-
                 this.emit('error', err);
-
                 return Promise.resolve(null);
             });
+
+        return this.__resource.then(() => {});
     }
 
     private async __setToClose(): Promise<void> {
         console.log(`[ResourceHandler] Attempting to close resource: ${this.__opts.name}`);
 
-        try {
-            if (this.isReconnecting) {
-                console.log(`[ResourceHandler] Reconnection in progress, delaying closure for: ${this.__opts.name}`);
-                return;
-            }
-
-            console.log(`[ResourceHandler] Attempting to reconnect before closing: ${this.__opts.name}`);
-            await this.__attemptReconnect();
-
-            if (this.__status === ResourceStatus.Connected) {
-                console.log(`[ResourceHandler] Reconnection successful, resource will not be closed: ${this.__opts.name}`);
-                return;
-            }
-        } catch (reconnectError) {
-            console.error(`[ResourceHandler] Failed to reconnect: ${reconnectError.message}`);
-            this.__startPeriodicReconnect();
-            // Ne pas fermer la ressource ici
+        if (this.isReconnecting) {
+            console.log(`[ResourceHandler] Reconnection in progress, delaying closure for: ${this.__opts.name}`);
             return;
         }
 
-    }
+        this.__setStatus(ResourceStatus.Closing);
 
-    private async __startPeriodicReconnect(): Promise<void> {
-        console.log(`[ResourceHandler] Starting periodic reconnection for resource: ${this.__opts.name}`);
-
-        const reconnectInterval = 30000; // Intervalle de 30 secondes
-
-        while (this.__status !== ResourceStatus.Connected && this.__status !== ResourceStatus.Closed) {
-            console.log(`[ResourceHandler] Attempting periodic reconnection for resource: ${this.__opts.name}`);
-
-            try {
-                await this.__attemptReconnect();
-            } catch (reconnectError) {
-                console.error(`[ResourceHandler] Periodic reconnection failed for resource: ${this.__opts.name}. Retrying in ${reconnectInterval / 1000} seconds.`);
+        try {
+            const res = await this.__resource;
+            if (res) {
+                res.removeAllListeners();
+                if (this.__opts.closer) {
+                    await this.__opts.closer(res);
+                } else {
+                    await res.close();
+                }
             }
-
-            console.log(`[ResourceHandler] Waiting for ${reconnectInterval / 1000} seconds before next attempt.`);
-            await this.__delay(reconnectInterval);
+        } catch (error) {
+            console.error(`[ResourceHandler] Error while closing resource: ${error.message}`);
         }
 
-        if (this.__status === ResourceStatus.Connected) {
-            console.log(`[ResourceHandler] Resource is now connected: ${this.__opts.name}.`);
-        } else if (this.__status === ResourceStatus.Closed) {
-            console.log(`[ResourceHandler] Reconnection attempts stopped. Resource is closed.`);
-        }
+        this.__setStatus(ResourceStatus.Closed);
+        this.__stopPeriodicReconnect();
+        this.emit('close');
     }
 
-    private async __attemptReconnect(): Promise<void> {
-        if (this.__status !== ResourceStatus.Connected) {
-            console.log(`[ResourceHandler] Reconnecting resource: ${this.__opts.name}`);
-            await this.connect();
+    private __startPeriodicReconnect(): void {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+        }
+
+        const attemptReconnect = () => {
+            if (this.__status !== ResourceStatus.Connected && this.__status !== ResourceStatus.Closed) {
+                console.log(`[ResourceHandler] Attempting periodic reconnection for resource: ${this.__opts.name}`);
+                this.__connect(true)
+                    .then(() => {
+                        if (this.__status === ResourceStatus.Connected) {
+                            console.log(`[ResourceHandler] Resource is now connected: ${this.__opts.name}`);
+                            this.__stopPeriodicReconnect();
+                        } else {
+                            this.reconnectTimer = setTimeout(attemptReconnect, 30000);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error(`[ResourceHandler] Periodic reconnection failed: ${error.message}`);
+                        this.reconnectTimer = setTimeout(attemptReconnect, 30000);
+                    });
+            } else {
+                this.__stopPeriodicReconnect();
+            }
+        };
+
+        this.reconnectTimer = setTimeout(attemptReconnect, 30000);
+    }
+
+    private __stopPeriodicReconnect(): void {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
         }
     }
 
@@ -292,7 +276,6 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
     private __setStatus(nextStatus: ResourceStatus): void {
         this.__status = nextStatus;
-
         process.nextTick(() => {
             this.emit('status', nextStatus);
         });
