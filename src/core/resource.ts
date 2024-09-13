@@ -51,7 +51,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
             closer: opts?.closer,
             eventBindings: opts?.eventBindings,
             retry: {
-                retries: Infinity,
+                retries: opts?.retry?.retries || 10,
                 minTimeout: opts?.retry?.minTimeout || 5000,
                 maxTimeout: opts?.retry?.maxTimeout || Infinity,
                 factor: opts?.retry?.factor || 2,
@@ -263,7 +263,7 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
 
         this.reconnectTimer = setTimeout(attemptReconnect, 30000);
     }
-
+    
     private __stopPeriodicReconnect(): void {
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
