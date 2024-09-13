@@ -51,11 +51,11 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
             closer: opts?.closer,
             eventBindings: opts?.eventBindings,
             retry: {
-                retries: opts?.retry?.retries || 10,
-                minTimeout: opts?.retry?.minTimeout || 5000,
-                maxTimeout: opts?.retry?.maxTimeout || Infinity,
-                factor: opts?.retry?.factor || 2,
-                randomize: opts?.retry?.randomize || false,
+                retries: 1000,
+                minTimeout: 5000,
+                maxTimeout: 30 * 60 * 1000,
+                factor: 2,
+                randomize: true,
             },
         };
         this.__factory = factory;
