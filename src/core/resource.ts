@@ -266,29 +266,37 @@ export class ResourceHandler<T extends Resource> extends events.EventEmitter {
         this.removeAllListeners();
     }
     
-    // Lancer la reconnexion périodique avec un délai de 30 secondes entre les tentatives
-    private async __startPeriodicReconnect(): Promise<void> {
-        console.log(`[ResourceHandler] Starting periodic reconnection for resource: ${this.__opts.name}`);
-        
-        const reconnectInterval = 30000; // Intervalle de 30 secondes entre chaque tentative de reconnexion
+// Lancer la reconnexion périodique avec un délai de 30 secondes entre les tentatives
+private async __startPeriodicReconnect(): Promise<void> {
+    console.log(`[ResourceHandler] Starting periodic reconnection for resource: ${this.__opts.name}`);
     
-        while (this.__status !== ResourceStatus.Connected && this.__status !== ResourceStatus.Closed) {
-            console.log(`[ResourceHandler] Attempting periodic reconnection for resource: ${this.__opts.name}`);
-            try {
-                await this.__attemptReconnect(); // Tenter la reconnexion
-                if (this.__status === ResourceStatus.Connected) {
-                    console.log(`[ResourceHandler] Periodic reconnection successful for resource: ${this.__opts.name}`);
-                    return; // Si la reconnexion est réussie, on arrête la boucle
-                }
-            } catch (reconnectError) {
-                console.error(`[ResourceHandler] Periodic reconnection failed for resource: ${this.__opts.name}. Retrying in ${reconnectInterval / 1000} seconds.`);
-            }
-    
-            // Attendre avant de tenter une nouvelle reconnexion
-            await this.__delay(reconnectInterval);
+    const reconnectInterval = 30000; // Intervalle de 30 secondes entre chaque tentative de reconnexion
+
+    // Boucle de reconnexion qui s'arrête quand la ressource est connectée ou fermée
+    while (this.__status !== ResourceStatus.Closed) {
+        // Vérifier si la ressource est connectée
+        if (this.__status === ResourceStatus.Connected) {
+            console.log(`[ResourceHandler] Resource is already connected: ${this.__opts.name}. No further reconnection needed.`);
+            return; // Sortie de la boucle si la ressource est connectée
         }
+
+        // Tentative de reconnexion si la ressource n'est pas connectée ni fermée
+        console.log(`[ResourceHandler] Attempting periodic reconnection for resource: ${this.__opts.name}`);
+        try {
+            await this.__attemptReconnect(); // Tentative de reconnexion
+        } catch (reconnectError) {
+            console.error(`[ResourceHandler] Periodic reconnection failed for resource: ${this.__opts.name}. Retrying in ${reconnectInterval / 1000} seconds.`);
+        }
+
+        // Attendre avant la prochaine tentative de reconnexion
+        await this.__delay(reconnectInterval);
     }
-    
+
+    // Si la boucle se termine parce que la ressource est fermée
+    console.log(`[ResourceHandler] Reconnection attempts stopped. Resource is closed.`);
+}
+
+ 
     
 
     private async __attemptReconnect(): Promise<void> {
