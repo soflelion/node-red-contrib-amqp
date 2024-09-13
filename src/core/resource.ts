@@ -1,6 +1,7 @@
 import * as events from 'events';
 import retry, { FailedAttemptError } from 'p-retry';
 import { TimeoutsOptions } from 'retry';
+import { setTimeout } from 'timers';
 
 export enum ResourceStatus {
     Connecting = 'connecting',
@@ -306,10 +307,10 @@ private async __startPeriodicReconnect(): Promise<void> {
         }
     }
 
-    // Ajoute un délai entre les tentatives
     private __delay(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+    
 
     private __setStatus(nextStatus: ResourceStatus): void {
         this.__status = nextStatus;
